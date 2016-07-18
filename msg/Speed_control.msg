@@ -1,0 +1,5 @@
+# Speed Controller, which topics can control the rover
+
+bool RLC   #Right left track controller
+bool CMD   #CMD speed controller
+bool JOY   #Joypad

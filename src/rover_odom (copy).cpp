@@ -1,0 +1,959 @@
+#include <ros/ros.h>
+#include <tf/transform_broadcaster.h>
+#include "libRover.h"
+#include <stdlib.h>
+#include <tf/transform_datatypes.h>
+#include <math.h>
+// Messages Standard
+#include <geometry_msgs/Twist.h>
+#include <nav_msgs/Odometry.h>
+#include <sensor_msgs/Joy.h>
+#include <sensor_msgs/Imu.h>
+// Messages Custom
+#include "donkey_rover/Scanner_Command.h"
+#include "donkey_rover/Rover_Track_Speed.h"
+#include "donkey_rover/Rover_Track_Bogie_Angle.h"
+#include "donkey_rover/Rover_Scanner.h"
+#include "donkey_rover/Rover_Power_Data.h" 
+#include "sherpa_msgs/Attitude.h"
+
+
+
+
+//#include <custom_msgs/velocityEstimate.h>
+
+// Services
+//#include "laser_assembler/AssembleScans.h"
+
+// Messages
+//#include "sensor_msgs/PointCloud2.h"
+//#include "sensor_msgs/PointCloud.h"
+//#include <sensor_msgs/point_cloud_conversion.h>
+
+Rover rover(false);
+EScannerState state;
+float scannerRaw;
+float scannerCal;
+float VX = 0.0;
+float VY = 0.0;
+bool Low_Battery = false;
+
+class DonkeyRoverClass
+{
+	public:
+		
+		DonkeyRoverClass(ros::NodeHandle& node)
+		{
+			n_=node;
+
+			//subscribers
+			subFromJoystick_ 		= n_.subscribe("joy", 1, &DonkeyRoverClass::joyCallback,this);
+			subFromCMDVEL_ 			= n_.subscribe("cmd_vel", 1, &DonkeyRoverClass::CMDVELLCommander,this);
+			subFromScannerCommander_ 	= n_.subscribe("c1", 10, &DonkeyRoverClass::ScannerCommander,this);
+			subFromIMU_			= n_.subscribe("imu/data", 1, &DonkeyRoverClass::ImuSet,this);
+			subFromRightLeftCommands_	= n_.subscribe("speedfollow", 5, &DonkeyRoverClass::RLcommander,this);
+			subFromscannerdata_		= n_.subscribe("scanner_data", 1, &DonkeyRoverClass::scannerRawValueSet,this);
+			subFromscannercommands_		= n_.subscribe("scanner_commands", 1, &DonkeyRoverClass::SetScanner,this);
+			subFromAttitude_		= n_.subscribe("attitude", 1, &DonkeyRoverClass::setAttitude,this);
+
+			// publishers
+			odom_pub 	   	  = n_.advertise<nav_msgs::Odometry>("odom", 100);
+			twist_pub 	  	  = n_.advertise<geometry_msgs::Twist>("twist", 100);
+			Rover_Track_Speed_pub     = n_.advertise<donkey_rover::Rover_Track_Speed>("RoverTrackSpeed", 100);
+			Rover_Track_Angles_pub    = n_.advertise<donkey_rover::Rover_Track_Bogie_Angle>("RoverTrackAngles", 100);	
+			Rover_Scanner_Data_pub    = n_.advertise<donkey_rover::Rover_Scanner>("RoverScannerInfo", 100);
+			Rover_Power_Data_pub      = n_.advertise<donkey_rover::Rover_Power_Data>("RoverPowerInfo", 100);
+			//PointCloud_pub 		  = n_.advertise<sensor_msgs::PointCloud2> ("assembled_cloud", 1);
+			Scanner_debug_pub	  = n_.advertise<geometry_msgs::Vector3>("Scanner_Debug", 100);
+			
+
+    			// Create the service client for calling the assembler
+    			//Cloud_client_ 		  = n_.serviceClient<laser_assembler::AssembleScans>("assemble_scans");
+
+    			// Start the timer that will trigger the processing loop (timerCallback)
+    			//Cloud_timer_ = n_.createTimer(ros::Duration(3,0), &DonkeyRoverClass::timerCallback, this);
+
+    			// Need to track if we've called the timerCallback at least once
+    			//first_Cloud_ = true;
+		}
+		/*
+  		void timerCallback(const ros::TimerEvent& e)
+  		{
+
+   			// We don't want to build a cloud the first callback, since we we
+    			//   don't have a start and end time yet
+    			if (first_Cloud_)
+    			{
+      				first_Cloud_ = false;
+      				return;
+    			}
+
+    			// Populate our service request based on our timer callback times
+    			laser_assembler::AssembleScans srv;
+    			srv.request.begin = e.last_real;
+    			srv.request.end   = e.current_real;
+
+    			// Make the service call
+    			if (Cloud_client_.call(srv))
+    			{
+      				ROS_INFO("Published Cloud with %u points", (uint32_t)(srv.response.cloud.points.size()));
+      				//sensor_msgs::PointCloud2 my_cloud;
+      				//sensor_msgs::convertPointCloudToPointCloud2(srv.response.cloud, my_cloud);
+      				//PointCloud_pub.publish(my_cloud);
+    			}
+    			else
+    			{
+      				//ROS_ERROR("Error making service call\n") ;
+    			}
+  		}*/
+  		void ImuSet(const sensor_msgs::Imu::ConstPtr& msg){
+  			Quat_attitude = msg->orientation;
+  			Gyro_velocity = msg->angular_velocity;
+  		
+  		}
+		
+		void setAttitude(const sherpa_msgs::Attitude::ConstPtr& msg){
+			euler_attitude = msg->euler;
+			euler_attitude.z = euler_attitude.z + M_PI/2;
+			//Quat_attitude = msg->quaternion;
+		
+		}
+
+		void RLcommander(const geometry_msgs::Vector3::ConstPtr& s)
+		{
+  			geometry_msgs::Vector3 speed = *s;
+  			float VL = speed.y;
+  			float VR = speed.x;
+  			if(!Joystick){
+  				int retCode = rover.setSpeed (10*VL,10*VR);
+  				if (retCode != 0)
+    			 		{
+     			  	 // Failed to set the speed
+     			   	ROS_ERROR("Failed to move the rover to follow");
+  			 	}
+  			}
+		}
+		
+		void scannerRawValueSet(const geometry_msgs::Vector3::ConstPtr& vector)
+		{
+		geometry_msgs::Vector3 new_speed = *vector;
+			scannerRaw = new_speed.x;
+        		if (abs(old_scanner_speed - new_scanner_speed) > 100){
+              			old_scanner_speed = new_scanner_speed;      
+
+        		}
+        	new_scanner_speed = new_speed.y;
+
+		}
+		
+		void SetScanner(const donkey_rover::Scanner_Command::ConstPtr& msg)
+		{
+		donkey_rover::Scanner_Command scanner_command_msg = *msg;
+		bool new_adjustment_angle;
+		bool new_roll_angle;
+		bool new_home_angle;
+		bool new_scanner_period;
+		bool new_scanner_command;
+		
+		if (abs(temp_adjustment_angle - scanner_command_msg.Scanner_Ajustment_Angle)<0.001) new_adjustment_angle=false;
+		else {  new_adjustment_angle=true;
+                ROS_INFO("New Adjustment Angle");}
+		if (abs(temp_roll_angle - scanner_command_msg.Scanner_Roll_Angle)<0.001) new_roll_angle=false;
+		else {  new_roll_angle = true; 
+                new_roll_angle_2 = true;
+                ROS_INFO("New roll Angle");}
+		if (abs(temp_home_angle - scanner_command_msg.Scanner_Home_Angle)<0.001) new_home_angle=false;
+		else {  new_home_angle=true;
+                ROS_INFO("New home Angle");}
+		if (abs(temp_scanner_period - scanner_command_msg.Scanner_Period)<0.001) new_scanner_period=false;
+		else {  new_scanner_period=true;
+                ROS_INFO("New Scanner Period");}
+		if (temp_scanner_command == scanner_command_msg.Scanner_Command) new_scanner_command=false;
+		else {  new_scanner_command=true;
+                ROS_INFO("New Scanner Command");}
+		
+
+		int retCode;
+		if (!first_cycle){
+			//Commands
+			temp_scanner_command = scanner_command_msg.Scanner_Command;
+ 			 if (scanner_command_msg.Scanner_Command =="GoHome" && new_scanner_command ){
+                      
+    				  while (state != ESSIdle)
+     			 	  {
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+     				  }
+                      retCode = rover.sendScannerCommand(ESCStop);
+                        Time::sleep(1, 0);
+     			 	  retCode = rover.sendScannerCommand(ESCGoHome);
+      			 	  if (retCode != 0)
+      		 	  	  {
+        		  	       ROS_ERROR("Scanner GoHome failed");
+
+      				  }
+      				  scanner_horizontal = true;
+  			 } else if(scanner_command_msg.Scanner_Command == "Start" && new_scanner_command)
+  			 {
+     			 	while (state != ESSIdle)
+      				{
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+      			 	}
+      			 	scannerRaw_init = scannerRaw;
+      			 	retCode = rover.sendScannerCommand(ESCStart);
+      			 	if (retCode != 0)
+      			 	{
+       		         		ROS_ERROR("Scanner Starting failed");
+
+     				 }
+  			} else if(scanner_command_msg.Scanner_Command == "Stop" && new_scanner_command)
+  			{
+      				retCode = rover.sendScannerCommand(ESCStop);
+      				if (retCode != 0)
+      				{
+       					ROS_ERROR("Scanner Stopping failed");
+
+      				}
+  			} else if (scanner_command_msg.Scanner_Command == "DoHoming" && new_scanner_command)
+  			{
+     				retCode = rover.sendScannerCommand(ESCDoHoming);
+
+  			}	  
+  			//else ROS_ERROR("Scanner Command is not valid"); 
+  			
+			//Scanner Adjustment Angle
+			if (scanner_command_msg.Scanner_Ajustment_Angle != -100 && new_adjustment_angle){
+				  temp_adjustment_angle = scanner_command_msg.Scanner_Ajustment_Angle;
+				  ROS_INFO("Start Set Scanner Adjustment Angle Process");
+    				  while (state != ESSIdle)
+     			 	  {
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+     				  }
+     			 	  retCode = rover.setScannerAdjustment(temp_adjustment_angle);
+      			 	  if (retCode != 0) ROS_ERROR("Set Scanner Adjustment Angle failed");
+				  else ROS_INFO("Scanner Ajustment Angle is successfully set to %f",temp_adjustment_angle);	
+			}
+			//Scanner Roll Angle
+			if (scanner_command_msg.Scanner_Roll_Angle != -100 && new_roll_angle){
+				  temp_roll_angle = scanner_command_msg.Scanner_Roll_Angle;
+				  ROS_INFO("Start Set Scanner Roll Angle Process");
+    				  while (state != ESSIdle)
+     			 	  {
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+     				  }
+     			 	  retCode = rover.setScannerAngle(temp_roll_angle);
+      			 	  if (retCode != 0) ROS_ERROR("Set Scanner Roll Angle failed");
+				  else ROS_INFO("Scanner Roll Angle is successfully set to %f",temp_roll_angle);	
+			}
+			//Scanner Home Angle
+			if (scanner_command_msg.Scanner_Home_Angle  != -100  && new_home_angle){
+				  temp_home_angle = scanner_command_msg.Scanner_Home_Angle;
+				  ROS_INFO("Start Set Scanner Home Angle Process");
+    				  while (state != ESSIdle)
+     			 	  {
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+     				  }
+     			 	  //retCode = rover.setScannerHomePosition(temp_home_angle);
+                      		  ROS_ERROR("Do Not change the home position, use the adjustment angle instead");
+      			 	  if (retCode != 0) ROS_ERROR("Set Scanner Home Angle failed");
+				  else ROS_INFO("Scanner Home Angle is successfully set to %f",temp_home_angle);	
+			}
+			//Scanner Period 
+			if (scanner_command_msg.Scanner_Period  != -100 && new_scanner_period){
+				  temp_scanner_period = scanner_command_msg.Scanner_Period;
+				  ROS_INFO("Start Set Scanner Period Process");
+    				  while (state != ESSIdle)
+     			 	  {
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+     				  }
+     			 	  retCode = rover.setScannerPeriod(temp_scanner_period);
+      			 	  if (retCode != 0) ROS_ERROR("Set Scanner Home Angle failed");
+				  else ROS_INFO("Scanner Period is successfully set to %f",temp_scanner_period);	
+			}
+		}
+		}
+
+		void ScannerCommander(const geometry_msgs::Vector3::ConstPtr& vector)
+		{
+ 			 geometry_msgs::Vector3 new_correction = *vector;
+  			 float msg = new_correction.z;
+  			 int retCode;
+			 /*
+			 retCode = rover.setScannerHomePosition(0);
+  			 if (retCode != 0)
+    			 {
+     			          ROS_ERROR("Failed TO Set Scanner Home Position");
+  			 }*/
+             		 //retCode = rover.getScannerState(state);
+ 			 if (msg ==1 ){
+    				  while (state != ESSIdle)
+     			 	  {
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+     				  }
+     			 	  retCode = rover.sendScannerCommand(ESCDoHoming);
+      			 	  if (retCode != 0)
+      		 	  	  {
+        		  	       printError("GoHome failed", retCode);
+
+      				  }
+  			 } else if(msg == 2)
+  			 {
+     			 	while (state != ESSIdle)
+      				{
+       					cout << '.' << flush;
+       					Time::sleep(1, 0);
+       					retCode = rover.getScannerState(state);
+      			 	}
+      			 	retCode = rover.sendScannerCommand(ESCStart);
+      			 	if (retCode != 0)
+      			 	{
+       		         		printError("Starting failed", retCode);
+
+     				 }
+  			} else if(msg == 3)
+  			{
+      				retCode = rover.sendScannerCommand(ESCStop);
+      				if (retCode != 0)
+      				{
+       					printError("Stopping failed", retCode);
+
+      				}
+  			} else if (msg == 4)
+  			{
+     				retCode = rover.sendScannerCommand(ESCDoHoming);
+
+  			}else
+  			{
+      			//printf(" \n Command is not recognized, recognized commands are GoHome, Start and Stop : \n");
+
+  			}
+
+		}
+
+
+		void CMDVELLCommander(const geometry_msgs::Twist::ConstPtr& vel)
+		{
+  			geometry_msgs::Twist new_vel = *vel;
+  			float v = sqrt (new_vel.linear.x * new_vel.linear.x + new_vel.linear.y * new_vel.linear.y);
+  			float vth = new_vel.angular.z;
+  			if(!Joystick){
+  				int retCode = rover.setSpeedVO (v, vth);
+    				if (retCode != 0)
+       				 {
+        			// Failed to set the speed
+        			ROS_ERROR("Failed to set speed of the rover");
+ 		 		}
+ 		 	}
+
+		}
+
+		void joyCallback(const sensor_msgs::JoyConstPtr& joy)
+		{
+			int retCode;
+  			float v=joy->axes[1];
+  			float vth=joy->axes[2];
+ 		    	float a1=joy->buttons[4];
+			//ROS_INFO("JOY: [1] = %f [2] = %f [4] = %f", v, vth, a1);
+  			if (joy->buttons[6]==1 || joy->buttons[7]==1) Joystick = true;
+  			if (joy->buttons[6]==0 && joy->buttons[7]==0){
+  				Joystick = false;
+  				v = 0;
+  				vth = 0;
+  				retCode = rover.setSpeedVO (v, vth);
+  			}
+  			if(Joystick){
+
+  				v= v*(a1+1)/2;
+				if (v > 0.8) v = 0.8;
+				//ROS_INFO("JOY: v = %f v_th = %f", v, vth, a1);
+  				retCode = rover.setSpeedVO (v, vth);
+    				if (retCode != 0)
+				{
+     					// Failed to set the speed
+					ROS_ERROR("Failed to set speed of the rover");
+  				}
+  				
+  			}
+  			
+  
+		}
+
+		// Class Functions
+		void Scanner_Handle()
+		{
+			float syncf = 100.0;
+    			
+    			int retCode = rover.setScannerPeriod(2.00);
+    			retCode = rover.setScannerAdjustment(0.00000000);
+    			retCode = rover.getScannerState(state);
+    			while (state != ESSIdle)
+    				{
+        			cout << '.' << flush;
+        			Time::sleep(1, 0);
+        			retCode = rover.getScannerState(state);
+   			 }
+
+  			retCode = rover.setSyncFreq(syncf);
+  			if (retCode != 0)
+        			{
+        			// Failed to set sync frequency
+        			printf("Failed to set sync frequency to %f",syncf);
+  			}
+            		retCode = rover.getScannerAngle(roll_angle);
+  			retCode = rover.setScannerPeriod(2);
+  			if (retCode != 0)
+  			{
+      				ROS_ERROR("setScannerPeriod failed");
+  			}
+
+		}
+
+		void Rover_Handle()
+		{
+  			int retCode = rover.init();
+  			if (retCode != 0)
+			{
+				ROS_ERROR("Failed Initialize the Rover");
+  			}
+		}
+		
+		/*void initParams()
+		{
+		std::string send_odom;
+   		n.param<std::string>("send_odom", send_odom, "false");
+   		if (send_odom == "true") {send_odom_=true; ROS_INFO("Send odom true");}
+   		else {send_odom_=false;ROS_INFO("Send odom false");}
+    		//if (n_.getparam)
+
+		}*/
+		
+		void RoverDataProvider()
+		{
+			Time timestamp;
+			float temp_Front_Left_Track_Speed;
+			float temp_Front_Right_Track_Speed;
+			float temp_Rear_Left_Track_Speed;
+			float temp_Rear_Right_Track_Speed;
+
+			float temp_Front_Left_Track_Angle;
+			float temp_Front_Right_Track_Angle;
+			float temp_Rear_Left_Track_Angle;
+			float temp_Rear_Right_Track_Angle;
+			float temp_Rear_Bogie_Angle;
+
+			float temp_Scanner_Period;
+			float temp_Scanner_adjustment_angle;
+			float temp_Scanner_roll_angle;
+			
+			float temp_Battery_Voltage;
+			float temp_Front_Right_Track_Current;
+			float temp_Front_Left_Track_Current;
+			float temp_Rear_Right_Track_Current;
+			float temp_Rear_Left_Track_Current;
+
+
+			
+			
+			int retCode; 
+  			ros::Time current_time;
+  			current_time = ros::Time::now();
+			retCode = rover.setAngleReference(EDIFrontRightTrack,1.34);
+			retCode = rover.setAngleReference(EDIFrontLeftTrack,-1.34);
+			retCode = rover.setAngleReference(EDIRearRightTrack,1.34);
+			retCode = rover.setAngleReference(EDIRearLeftTrack,-1.34);
+				
+			retCode = rover.getSpeedInMPerS(timestamp,
+				  temp_Front_Left_Track_Speed, temp_Front_Right_Track_Speed,
+				  temp_Rear_Left_Track_Speed,  temp_Rear_Right_Track_Speed  );
+  			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Speed of Tracks, Try to Restart the Rover");
+  			}
+			retCode = rover.getAngles(timestamp,
+				  temp_Front_Left_Track_Angle, temp_Front_Right_Track_Angle,
+				  temp_Rear_Left_Track_Angle,  temp_Rear_Right_Track_Angle,
+				  temp_Rear_Bogie_Angle);
+  			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Angle of Tracks, Try to Restart the Rover");
+  			}
+			////////////////SCANNER STATE////////////////////
+			EScannerState state2;	
+			retCode = rover.getScannerState(state2);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Scanner State, Try to Restart the Rover");
+  			}
+			if(state2 == ESSUnknown) 	 outputScanner.Scanner_State = "Unknown!";
+			if(state2 == ESSIdle)   		 outputScanner.Scanner_State = "Idle";
+			if(state2 == ESSCommandReceived ) outputScanner.Scanner_State = "CommandReceived";
+			if(state2 == ESSHoming) 		 outputScanner.Scanner_State = "Homing";
+			if(state2 == ESSGoingHome) 	 outputScanner.Scanner_State = "GoingHome";
+			if(state2 == ESSRolling) 	 outputScanner.Scanner_State = "Rolling";
+
+			retCode = rover.getScannerPeriod(temp_Scanner_Period);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Scanner Period, Try to Restart the Rover");
+  			}
+			retCode = rover.getScannerAdjustment(temp_Scanner_adjustment_angle);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Scanner Adjustment angle, Try to Restart the Rover");
+  			}
+			retCode = rover.getScannerAngle(temp_Scanner_roll_angle);
+            		roll_angle = temp_Scanner_roll_angle;
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Scanner Roll angle, Try to Restart the Rover");
+  			}
+
+
+			retCode = rover.readVoltage(EDIFrontRightTrack,timestamp,temp_Battery_Voltage);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Battery Voltage, Try to Restart the Rover");
+  			}
+			retCode = rover.getCurrent(EDIFrontRightTrack,timestamp,temp_Front_Right_Track_Current);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Battery Voltage, Try to Restart the Rover");
+  			}
+			retCode = rover.getCurrent(EDIFrontRightTrack,timestamp,temp_Front_Right_Track_Current);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Front_Right_Track_Current, Try to Restart the Rover");
+  			}
+			retCode = rover.getCurrent(EDIFrontLeftTrack,timestamp,temp_Front_Left_Track_Current);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Front_Left_Track_Current, Try to Restart the Rover");
+  			}
+			retCode = rover.getCurrent(EDIRearRightTrack,timestamp,temp_Rear_Right_Track_Current);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Rear_Right_Track_Current, Try to Restart the Rover");
+  			}
+			retCode = rover.getCurrent(EDIRearLeftTrack,timestamp,temp_Rear_Left_Track_Current);
+			if (retCode != 0)
+			{
+				ROS_ERROR("Failed to Read Rear_Left_Track_Current, Try to Restart the Rover");
+  			}			
+
+
+			outputTrackSpeed.Front_Left_Track_Speed	  = temp_Front_Left_Track_Speed;
+			outputTrackSpeed.Front_Right_Track_Speed  = temp_Front_Right_Track_Speed;
+			outputTrackSpeed.Rear_Left_Track_Speed    = temp_Rear_Left_Track_Speed;
+			outputTrackSpeed.Rear_Right_Track_Speed   = temp_Rear_Right_Track_Speed;
+			outputTrackSpeed.header.stamp = current_time;
+   	 		outputTrackSpeed.header.frame_id = "base_link";
+			outputTrackSpeed.TimeStamp = current_time.toSec();
+
+			outputBogieAngle.Front_Left_Track_Angle   = temp_Front_Left_Track_Angle;
+			outputBogieAngle.Front_Right_Track_Angle  = temp_Front_Right_Track_Angle;
+			outputBogieAngle.Rear_Left_Track_Angle    = temp_Rear_Left_Track_Angle;
+			outputBogieAngle.Rear_Right_Track_Angle   = temp_Rear_Right_Track_Angle;
+			outputBogieAngle.Rear_Bogie_Angle         = temp_Rear_Bogie_Angle -1.31;
+ 			outputBogieAngle.header.stamp = current_time;
+   	 		outputBogieAngle.header.frame_id = "base_link";
+			outputBogieAngle.TimeStamp = current_time.toSec();
+			
+			outputScanner.Scanner_Period = temp_Scanner_Period;
+			outputScanner.Scanner_adjustment_angle = temp_Scanner_adjustment_angle;
+			outputScanner.Scanner_roll_angle = temp_Scanner_roll_angle;
+			outputScanner.Scanner_angle = scannerCal;
+			outputScanner.Scanner_angle_encoder = scannerCal;
+			outputScanner.Scanner_angle_degree = scannerCal/244.6;
+			outputScanner.Scanner_angle = (scannerCal/244.6)*M_PI/180;
+ 			outputScanner.header.stamp = current_time;
+   	 		outputScanner.header.frame_id = "base_link";
+			outputScanner.TimeStamp = current_time.toSec();
+
+			outputPower.Battery_Voltage = temp_Battery_Voltage;
+			outputPower.Front_Right_Track_Current = temp_Front_Right_Track_Current;
+			outputPower.Front_Left_Track_Current  = temp_Front_Left_Track_Current;
+			outputPower.Rear_Right_Track_Current  = temp_Rear_Right_Track_Current;
+			outputPower.Rear_Left_Track_Current   = temp_Rear_Left_Track_Current;
+ 			outputPower.header.stamp = current_time;
+   	 		outputPower.header.frame_id = "base_link";
+			outputPower.TimeStamp = current_time.toSec();
+			if(temp_Battery_Voltage < 46.00) Low_Battery = true;
+			else Low_Battery = false;
+
+      
+			Rover_Track_Speed_pub.publish(outputTrackSpeed); 
+			Rover_Track_Angles_pub.publish(outputBogieAngle);
+			Rover_Scanner_Data_pub.publish(outputScanner);
+			Rover_Power_Data_pub.publish(outputPower);
+
+		}
+
+        void Odometry_Handle()
+		{
+		    // Handling the parameters
+  			ros::NodeHandle n("~");
+   			n.param("send_odom", send_odom_, false);
+   			n.param("odom_3D", odom_3D_, false);
+   			
+   			//Variables
+  			float x = 0.0;
+  			float y = 0.0;
+  			float z = 0.0;
+  			float th = 0.0;
+  			float v = 0.0;
+  			float vx = 0.0;
+  			float vy = 0.0;
+  			float vz = 0.0;
+ 		 	float vth = 0.0;
+  			int count = 0;
+  			cout << '*' <<endl;
+  			ROS_INFO("Sending Odom Transform by rover_odom : %d", send_odom_);
+  			if (Low_Battery) ROS_WARN("Battery Low");
+			// Start Scanner angle calcultion - Defining variables
+			float delta_scanner = 0;
+			float last_scanner_value = 0;
+			float scanner_offsetVal = 0;
+            		
+			tf::TransformBroadcaster broadcaster1;
+            		tf::TransformBroadcaster broadcaster2;
+            		scannerCal_max = roll_angle * 23713 * 2 / M_PI;
+            		new_scanner_speed = 0;
+            		old_scanner_speed = 0;
+			// End Scanner angle calcultion - Defining variables
+			int retCode;
+  			ros::Time current_time, last_time;
+  			current_time = ros::Time::now();
+  			last_time = ros::Time::now();
+			ros::Rate loop_rate(rate);
+            		bool speed_dec_flag = false;
+            		int wait_ = 0;
+			//Initializing Quat_attitude
+			Quat_attitude.w = 1;
+            		Quat_attitude.x = 0;
+            		Quat_attitude.y = 0;
+            		Quat_attitude.z = 0;
+            		
+  			while(ros::ok()){
+
+				// Start Scanner Angle Loop 
+    				delta_scanner =scannerRaw - last_scanner_value;
+				if (delta_scanner > 10000) { 
+					scanner_offsetVal = scanner_offsetVal - 16383;
+					//ROS_INFO("Scanner offsetVal is %f, scannerRaw is %f", scanner_offsetVal, scannerRaw);
+					}
+				else if(delta_scanner < -10000){  
+					scanner_offsetVal = scanner_offsetVal + 16383;
+					//ROS_WARN("Scanner offsetVal is %f, scannerRaw is %f", scanner_offsetVal, scannerRaw);
+					}
+				last_scanner_value = scannerRaw;
+				if (first_cycle && scannerRaw > 0 && count/rate > 2) {
+					scanner_hor_corrector = -scannerRaw - scanner_offsetVal;
+					ROS_WARN("scanner hor corrector is %f", scanner_hor_corrector);
+					first_cycle = false;
+				}
+				
+				scannerCal = scannerRaw + scanner_offsetVal + scanner_hor_corrector;
+				//drift = 0;
+    				tf::Quaternion scan_quart,scan_quart_back;
+    				scan_quart.setRPY     ((( scannerCal/244.6)*M_PI/180)+M_PI,0.0 , 0.0);// (scannerCal/23713)*M_PI/2)
+                    		scan_quart_back.setRPY((-(scannerCal/244.6)*M_PI/180)+M_PI,0.0 , 0.0);// (scannerCal/23713)*M_PI/2)
+    				broadcaster1.sendTransform(
+      				tf::StampedTransform(
+
+        			tf::Transform(scan_quart, tf::Vector3(0.0, 0.0, 0.0)), ros::Time::now(),"laser","base_laser")
+    				);
+    				broadcaster2.sendTransform(
+      				tf::StampedTransform(
+
+        			tf::Transform(scan_quart_back, tf::Vector3(0.0, 0.0, 0.0)), ros::Time::now(),"base_laser","base_scanner")
+    				);
+
+				/*
+                 	 	if (abs(scannerCal) > abs(roll_angle * scannerCal_max * 2 * 0.8 / M_PI )) //Handeling the error in angle
+                	 	{
+                         		//ROS_INFO("Entering the Final zone");
+                         
+                         		if ( ((new_scanner_speed - old_scanner_speed) < 150) && !speed_dec_flag ) {speed_dec_flag = true;ROS_ERROR("Speed Decreasing");}
+                         		if ( speed_dec_flag && ((new_scanner_speed - old_scanner_speed) > 150) ) {
+                                		ROS_INFO("DIRECTION CHANGED");
+                                		Roll_counter_flag = true;
+                                		speed_dec_flag = false;
+                                		if (new_roll_angle_2) {
+                                	        	scannerCal_max = scannerCal;
+                                	       	 	new_roll_angle_2 = false;
+                                	        	ROS_WARN("Maxencoder val is set to %f which is actually %f", scannerCal_max,scannerCal_max*90/23713 );
+                                		}
+                                		//scannerCal = scannerCal_max * scannerCal/abs(scannerCal);
+                                		drift = -scannerCal + abs(scannerCal_max) * scannerCal/abs(scannerCal);
+                                		//ROS_INFO("SCANNER_CALL = %f, ScannerCall_max = %f", scannerRaw + scanner_offsetVal + scanner_hor_corrector + drift,scannerCal_max);
+                                		ROS_INFO("SCANNER_CALL = %f, ScannerCall_max = %f", scannerCal, scannerCal_max);
+                                		ROS_WARN("Drift = %f",drift);
+                                		//debug
+                                		drift = 0;
+                         		}
+                         
+                		}*/
+                		//Horizontal angle corrector
+                		EScannerState state1;
+                		retCode = rover.getScannerState(state1);
+				/*
+                 		if (state1 == ESSRolling && abs(scannerCal) < 200 && Roll_counter_flag){
+                 			Roll_counter_flag = false; 
+                 			ROS_INFO("CLOSE TO ZERO ..... Attention");
+                 			Roll_counter ++;
+                 			if(Roll_counter == 7) {
+                 				Roll_counter = 0;
+                 				retCode = rover.sendScannerCommand(ESCStop);
+                 				retCode = rover.sendScannerCommand(ESCGoHome);
+                 				ros::Duration(0.7).sleep();
+                 				scanner_hor_corrector = -scannerCal;
+                 				retCode = rover.sendScannerCommand(ESCStart);
+                 				if (retCode != 0){
+                 					ROS_WARN("Failed to restart");
+                 					try_ = 0;  
+                 					while(try_ < 3){
+                 					int retC = rover.sendScannerCommand(ESCStop);
+                 					ros::Duration(0.7).sleep();
+                 					ROS_INFO ("Try Number %d", try_+1);
+                 					retC = rover.sendScannerCommand(ESCStart);
+                 					try_ ++;
+                 					
+                 					
+                 					}
+                 				}
+                 			}
+                 		}
+                 		*/
+                 		/*
+                 		if (state1 == ESSIdle && scanner_horizontal && abs(new_scanner_speed)<0.001)
+               			{
+
+                        		ROS_INFO("Going Home");
+                        		//ros::Duration(3).sleep();
+                        		if(abs(scannerRaw_init - scannerRaw) < 3 ){
+                        			scanner_hor_corrector = -scannerCal;
+                        			scanner_horizontal = false;
+                        			ROS_WARN("ScannerRaw = %f, scannerCal = %f, scanner_hor_corrector = %f",scannerRaw, scannerCal, scanner_hor_corrector);
+                        		}
+                		}
+                		*/
+
+				
+				// END Scanner Angle Loop
+    				Time timestamp;
+    				ros::spinOnce();               // check for incoming messages
+    				current_time = ros::Time::now();
+
+    				retCode = rover.getSpeedVO(timestamp, v, vth);
+    				if (retCode != 0)
+				{
+     					// Failed to read the rover speed
+					ROS_ERROR("Failed to read the rover speed");
+   				 }
+   				 
+   				//Replacing angular velocity with Gyrospeed if vth is not zero
+   				if(abs(vth)>0.00001){
+   				    //ROS_INFO_ONCE(" Che palle ! vth = %f", vth);
+   				    vth = Gyro_velocity.z;
+   				} else vth = 0.0;
+   				
+   				// Calculating 3D Speed and Pose
+   				tf::Matrix3x3 Rot_Matrix;
+   				tf::Quaternion Quat_attitude_tf;
+   				tf::quaternionMsgToTF(Quat_attitude, Quat_attitude_tf);
+				Rot_Matrix = tf::Matrix3x3(Quat_attitude_tf);
+				tf::Vector3 V_IF_vector =  Rot_Matrix.getColumn(1);
+    				// Correction applied
+    				
+			    	//vy = v * sin(th);    
+    				//vx = v * cos(th);
+				
+				vy = v * cos(th);
+				vx = -v * sin(th);
+
+    				//compute odometry in a typical way given the velocities of the robot
+    				float dt = (current_time - last_time).toSec();
+    				float delta_y;
+    				float delta_x;
+    				float delta_z = 0;
+    				float delta_th = vth * dt;
+    				delta_x = vx * dt;
+    				delta_y = vy * dt;
+    				if (odom_3D_)
+    				{
+    					ROS_INFO_ONCE("3D Odometry");
+    					delta_x = v*V_IF_vector.getX() * dt;
+    					delta_y = v*V_IF_vector.getY() * dt;
+    					delta_z = v*V_IF_vector.getZ() * dt;
+    				}
+    				x += delta_x;
+    				y += delta_y;
+    				z += delta_z;
+    				th += delta_th;
+
+    				//since all odometry is 6DOF we'll need a quaternion created from yaw
+    				
+  				//tf::Quaternion quat;
+  				//quat.setEuler(euler_attitude.x,euler_attitude.y,euler_attitude.z);
+  				
+  				geometry_msgs::Quaternion odom_quat;
+  				if (odom_3D_)
+  					odom_quat = Quat_attitude;
+  				else
+  					odom_quat = tf::createQuaternionMsgFromYaw(th);
+  				//tf::quaternionTFToMsg(quat,odom_quat);
+    				//geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(th);
+    				// euler_attitude should go to the Quaternion instead
+
+    				//first, we'll publish the transform over tf
+    				geometry_msgs::TransformStamped odom_trans;
+    				odom_trans.header.stamp = current_time;
+    				odom_trans.header.frame_id = "odom";
+    				odom_trans.child_frame_id = "Imu_link";
+
+    				odom_trans.transform.translation.x = x;
+   				odom_trans.transform.translation.y = y;
+    				odom_trans.transform.translation.z = z;
+    				odom_trans.transform.rotation = odom_quat;
+
+    				//send the transform
+    				if (send_odom_ == true) odom_broadcaster.sendTransform(odom_trans);
+    				//odom_broadcaster.sendTransform(odom_trans);
+
+    				//next, we'll publish the odometry message over ROS
+    				
+    				odom.header.stamp = current_time;
+   	 			odom.header.frame_id = "odom";
+    				
+
+    				//set the position
+    				odom.pose.pose.position.x = x;
+    				odom.pose.pose.position.y = y;
+    				odom.pose.pose.position.z = z;
+    				odom.pose.pose.orientation = odom_quat;
+
+    				//set the velocity
+    				odom.child_frame_id = "Imu_link";
+    				odom.twist.twist.linear.x = vx;
+    				odom.twist.twist.linear.y = vy;
+    				odom.twist.twist.linear.z = vz;
+    				odom.twist.twist.angular.x = Gyro_velocity.x;
+    				odom.twist.twist.angular.y = Gyro_velocity.y;
+    				odom.twist.twist.angular.z = Gyro_velocity.z;
+    				tw.linear.x = VX;
+    				tw.linear.y = VY;
+
+    				//publish the message
+    				odom_pub.publish(odom);
+    				twist_pub.publish(tw);
+				RoverDataProvider();
+    				last_time = current_time;
+    				//Publishing scanner debug
+                		Scan_debug.x = scannerRaw;
+				Scan_debug.y = scannerCal;
+				Scan_debug.z = (scannerCal/244.6);
+				Scanner_debug_pub.publish(Scan_debug);
+    				count ++;
+				loop_rate.sleep();
+			
+  				}
+		}
+				
+		
+
+	protected:
+		/*state here*/
+		ros::NodeHandle n_;
+		
+		// Subscribers
+		ros::Subscriber subFromAttitude_;
+		ros::Subscriber subFromJoystick_;
+		ros::Subscriber subFromCMDVEL_;
+		ros::Subscriber subFromScannerCommander_;
+		ros::Subscriber subFromIMU_;
+	    	ros::Subscriber subFromRightLeftCommands_;
+		ros::Subscriber subFromscannerdata_;
+		ros::Subscriber subFromscannercommands_;
+		// Publishers
+		ros::Publisher odom_pub;
+		ros::Publisher twist_pub;
+		ros::Publisher Rover_Track_Speed_pub;
+		ros::Publisher Rover_Track_Angles_pub;
+		ros::Publisher Rover_Scanner_Data_pub;
+		ros::Publisher Rover_Power_Data_pub;
+		//ros::Publisher PointCloud_pub;
+		ros::Publisher Scanner_debug_pub;
+
+		nav_msgs::Odometry odom;
+		tf::TransformBroadcaster odom_broadcaster;
+		geometry_msgs::Twist tw;
+		geometry_msgs::Vector3 Scan_debug;
+		donkey_rover::Rover_Track_Speed outputTrackSpeed;
+		donkey_rover::Rover_Scanner outputScanner;
+		donkey_rover::Rover_Track_Bogie_Angle outputBogieAngle;
+		donkey_rover::Rover_Power_Data outputPower;
+
+		int rate = 150;
+		bool send_odom_;
+		bool odom_3D_;
+        	float roll_angle;
+        	float scanner_en_speed = 0;
+        	float scannerCal_max;
+        	bool new_roll_angle_2 = true;
+        	bool scanner_horizontal = false;
+        	float new_scanner_speed;
+        	float old_scanner_speed;
+        	bool Joystick = false;
+        	float scannerRaw_init;
+        	float drift = 0.0;
+        	float scanner_hor_corrector = 0;
+        	bool first_cycle = true;
+  		geometry_msgs::Vector3 euler_attitude;
+  		geometry_msgs::Vector3 Gyro_velocity;
+  		geometry_msgs::Quaternion Quat_attitude;
+  		ros::Timer Cloud_timer_;
+
+	private:
+
+		float temp_adjustment_angle = -100;
+        	float temp_roll_angle = -100;
+        	float temp_home_angle = -100;
+        	float temp_scanner_period = -100;
+        	bool first_Cloud_;
+       	 	string temp_scanner_command = "Ciao";
+       	 	ros::ServiceClient Cloud_client_;
+       	 	int Roll_counter = 0;
+       	 	bool Roll_counter_flag = true;
+        
+		
+};
+
+
+
+int main(int argc, char **argv)
+{
+	ros::init(argc, argv, "donkey_rover");
+	ros::NodeHandle node;
+
+	DonkeyRoverClass DonkeyRoverNode(node);
+
+	DonkeyRoverNode.Rover_Handle();
+	
+	DonkeyRoverNode.Scanner_Handle();
+	//DonkeyRoverNode.RoverDataProvider();
+	DonkeyRoverNode.Odometry_Handle();
+	return 0;
+}
