@@ -1,5 +1,0 @@
-# Speed Controller, which topics can control the rover
-
-bool RLC
-bool CMD
-bool JOY
