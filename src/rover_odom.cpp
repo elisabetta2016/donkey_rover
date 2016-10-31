@@ -6,6 +6,7 @@
 #include <math.h>
 // Messages Standard
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Joy.h>
 #include <sensor_msgs/Imu.h>
@@ -16,8 +17,11 @@
 #include "donkey_rover/Rover_Track_Bogie_Angle.h"
 #include "donkey_rover/Rover_Scanner.h"
 #include "donkey_rover/Rover_Power_Data.h" 
+#include "donkey_rover/Speed_control.h"
 #include "sherpa_msgs/Attitude.h"
 
+
+#include<iostream>
 
 
 
@@ -46,9 +50,11 @@ class DonkeyRoverClass
 			subFromscannerdata_		= n_.subscribe("scanner_data", 1, &DonkeyRoverClass::scannerRawValueSet,this);
 			subFromscannercommands_		= n_.subscribe("scanner_commands", 1, &DonkeyRoverClass::SetScanner,this);
 			subFromAttitude_		= n_.subscribe("attitude", 1, &DonkeyRoverClass::setAttitude,this);
+			subFromSpeedcontrol_	= n_.subscribe("speed_control",1,&DonkeyRoverClass::setSpeedControl,this);
 
 			// publishers
 			odom_pub 	   	  = n_.advertise<nav_msgs::Odometry>("odom", 100);
+			pose_pub		  = n_.advertise<geometry_msgs::PoseWithCovarianceStamped>("donkey_pose", 100);
 			twist_pub 	  	  = n_.advertise<geometry_msgs::Twist>("twist", 100);
 			Rover_Track_Speed_pub     = n_.advertise<donkey_rover::Rover_Track_Speed>("RoverTrackSpeed", 100);
 			Rover_Track_Angles_pub    = n_.advertise<donkey_rover::Rover_Track_Bogie_Angle>("RoverTrackAngles", 100);	
@@ -62,8 +68,18 @@ class DonkeyRoverClass
 			last_scanner_value = 0.0;
 			scanner_offsetVal = 0.0;
 			scanner_hor_corrector = 0.0;
+
+			Speed_control.CMD = false;
+			Speed_control.JOY = true;
+			Speed_control.RLC = false;
 			
 
+		}
+
+		void setSpeedControl(const donkey_rover::Speed_control::ConstPtr& msg)
+		{
+			Speed_control = *msg;
+			Speed_control_sq = msg->header.seq; 
 		}
 
   		void ImuSet(const sensor_msgs::Imu::ConstPtr& msg){
@@ -73,6 +89,15 @@ class DonkeyRoverClass
   				Quat_attitude = msg->orientation;
   		
   		}
+
+		void shutdown()
+		{
+			int retCode = rover.sendScannerCommand(ESCDoHoming);
+			ROS_WARN("CIAO!");
+			Time::sleep(2, 0);
+			//int o = system("sudo ~/catkin_ws/src/donkey_rover/scripts/./shutdown.sh");
+			system("sudo poweroff");
+		}
 		
 		void setAttitude(const sherpa_msgs::Attitude::ConstPtr& msg){
 			euler_attitude = msg->euler;
@@ -89,7 +114,12 @@ class DonkeyRoverClass
   			geometry_msgs::Vector3 speed = *s;
   			float VL = speed.y;
   			float VR = speed.x;
-  			if(!Joystick){
+			if(!Speed_control.RLC)
+			{
+				ROS_ERROR("RLC speed will not be executed due to false vale of speed_control/RLC");
+			}
+
+  			if(!Joystick && Speed_control.RLC){
   				int retCode = rover.setSpeed (10*VL,10*VR);
   				if (retCode != 0)
     			 		{
@@ -342,7 +372,11 @@ class DonkeyRoverClass
   			geometry_msgs::Twist new_vel = *vel;
   			float v = sqrt (new_vel.linear.x * new_vel.linear.x + new_vel.linear.y * new_vel.linear.y);
   			float vth = new_vel.angular.z;
-  			if(!Joystick){
+			if(!Speed_control.CMD)
+			{
+				ROS_ERROR("CMD speed will not be executed due to false vale of speed_control/CMD");
+			}
+  			if(!Joystick && Speed_control.CMD){
   				int retCode = rover.setSpeedVO (v, vth);
     				if (retCode != 0)
        				 {
@@ -380,6 +414,11 @@ class DonkeyRoverClass
   				}
   				
   			}
+			if(joy->buttons[0] && joy->buttons[1] && joy->buttons[4] && joy->buttons[5])
+			{
+				ROS_FATAL("Power off Request by user");
+				shutdown();
+			}
   			
   
 		}
@@ -601,11 +640,17 @@ class DonkeyRoverClass
    			n.param("send_odom", send_odom_, false);
    			n.param("odom_3D", odom_3D_, false);
    			n.param("madgwick", madgwick_, true);
+		    n.param("x_front",x_front_config,false);
+			if(odom_3D_ && x_front_config)
+			{
+				ROS_ERROR("odom 3D is not compatible with x_front configuration, it is then set to false");
+				odom_3D_ = false;
+			}
    			
    			//Variables
   			float x = 0.0;
   			float y = 0.0;
-  			float z = 0.0;
+  			float z = 0.164;  // New, 3D
   			float th = 0.0;
   			float v = 0.0;
   			float vx = 0.0;
@@ -632,7 +677,17 @@ class DonkeyRoverClass
             		Quat_attitude.z = 0;
             		
   			while(ros::ok()){
-
+				// Watch DoG
+				if( Speed_control_sq - Speed_control.header.seq > (unsigned int)rate)
+				{
+					Speed_control.CMD = false;
+					Speed_control.RLC  = false;
+					if(!Joystick)
+					{
+						ROS_WARN("No new speed msg has beed received in the last second, Watch dog stops the Rover");
+						retCode = rover.setSpeed(0.0,0.0);
+					}
+				}
 				// Start Scanner Angle Loop 
 
 				if (first_cycle && scannerRaw > 0 && count/rate > 2) {
@@ -670,12 +725,19 @@ class DonkeyRoverClass
 				Rot_Matrix = tf::Matrix3x3(Quat_attitude_tf);
 				tf::Vector3 V_IF_vector =  Rot_Matrix.getColumn(1);
     				// Correction applied
-    				
-			    	//vy = v * sin(th);    
-    				//vx = v * cos(th);
+    			if(x_front_config)
+				{
+					ROS_WARN_ONCE("X_front configuration");
+					vy = v * sin(th);    
+    				vx = v * cos(th);	
+				}	
+				else
+				{
+					ROS_WARN_ONCE("Y_front configuration");
+					vy = v * cos(th);
+					vx = -v * sin(th);		
+				}
 				
-				vy = v * cos(th);
-				vx = -v * sin(th);
 
     				//compute odometry in a typical way given the velocities of the robot
     				float dt = (current_time - last_time).toSec();
@@ -715,7 +777,10 @@ class DonkeyRoverClass
     				geometry_msgs::TransformStamped odom_trans;
     				odom_trans.header.stamp = current_time;
     				odom_trans.header.frame_id = "odom";
-    				odom_trans.child_frame_id = "Imu_link";
+					if(x_front_config)
+						odom_trans.child_frame_id = "base_footprint";
+					else
+    					odom_trans.child_frame_id = "Imu_link";
 
     				odom_trans.transform.translation.x = x;
    				odom_trans.transform.translation.y = y;
@@ -737,6 +802,11 @@ class DonkeyRoverClass
     				odom.pose.pose.position.y = y;
     				odom.pose.pose.position.z = z;
     				odom.pose.pose.orientation = odom_quat;
+				
+				donkey_pose.header.stamp = current_time;
+   	 			donkey_pose.header.frame_id = "odom";
+				donkey_pose.pose = odom.pose;
+				
 
     				//set the velocity
     				odom.child_frame_id = "Imu_link";
@@ -750,18 +820,20 @@ class DonkeyRoverClass
     				tw.linear.y = VY;
 
     				//publish the message
-    				odom_pub.publish(odom);
-    				twist_pub.publish(tw);
+    			odom_pub.publish(odom);
+				pose_pub.publish(donkey_pose);
+    			twist_pub.publish(tw);
 				RoverDataProvider();
-    				last_time = current_time;
-    				//Publishing scanner debug
-                		Scan_debug.x = scannerRaw;
+    			last_time = current_time;
+    			//Publishing scanner debug
+                Scan_debug.x = scannerRaw;
 				Scan_debug.y = scannerCal;
 				Scan_debug.z = (scannerCal/244.6);
 				Scanner_debug_pub.publish(Scan_debug);
-    				count ++;
+    			count ++;
+				Speed_control_sq ++;
 				loop_rate.sleep();
-			
+				
   				}
 		}
 				
@@ -777,12 +849,14 @@ class DonkeyRoverClass
 		ros::Subscriber subFromCMDVEL_;
 		ros::Subscriber subFromScannerCommander_;
 		ros::Subscriber subFromIMU_;
-	    	ros::Subscriber subFromRightLeftCommands_;
+	    ros::Subscriber subFromRightLeftCommands_;
 		ros::Subscriber subFromscannerdata_;
 		ros::Subscriber subFromscannercommands_;
-		
+		ros::Subscriber subFromSpeedcontrol_;
+
 		// Publishers
 		ros::Publisher odom_pub;
+		ros::Publisher pose_pub;
 		ros::Publisher twist_pub;
 		ros::Publisher Rover_Track_Speed_pub;
 		ros::Publisher Rover_Track_Angles_pub;
@@ -791,7 +865,7 @@ class DonkeyRoverClass
 		ros::Publisher Scanner_debug_pub;
 		ros::Publisher Scanner_angle_pub;
 		
-
+		geometry_msgs::PoseWithCovarianceStamped donkey_pose;
 		nav_msgs::Odometry odom;
 		tf::TransformBroadcaster odom_broadcaster;
 		geometry_msgs::Twist tw;
@@ -800,18 +874,22 @@ class DonkeyRoverClass
 		donkey_rover::Rover_Scanner outputScanner;
 		donkey_rover::Rover_Track_Bogie_Angle outputBogieAngle;
 		donkey_rover::Rover_Power_Data outputPower;
+		donkey_rover::Speed_control Speed_control;
+		uint32_t Speed_control_sq;
+		
 
 		int rate = 150;
 		bool send_odom_;
 		bool odom_3D_;
-        	float roll_angle;
-        	bool new_roll_angle_2 = true;
-        	bool scanner_horizontal = false;
-        	bool Joystick = false;
-        	float scannerRaw_init;
-        	float scanner_hor_corrector;
-        	bool first_cycle = true;
-        	bool madgwick_;
+		bool x_front_config;
+        float roll_angle;
+        bool new_roll_angle_2 = true;
+        bool scanner_horizontal = false;
+        bool Joystick = false;
+        float scannerRaw_init;
+        float scanner_hor_corrector;
+        bool first_cycle = true;
+        bool madgwick_;
   		geometry_msgs::Vector3 euler_attitude;
   		geometry_msgs::Vector3 Gyro_velocity;
   		geometry_msgs::Quaternion Quat_attitude;
@@ -820,18 +898,18 @@ class DonkeyRoverClass
 	private:
 
 		float temp_adjustment_angle = -100;
-        	float temp_roll_angle = -100;
-        	float temp_home_angle = -100;
-        	float temp_scanner_period = -100;
-       	 	string temp_scanner_command = "Ciao";
+        float temp_roll_angle = -100;
+        float temp_home_angle = -100;
+        float temp_scanner_period = -100;
+       	string temp_scanner_command = "Ciao";
 
-       	 	// Scanner angle variables
-       	 	float delta_scanner = 0;
+        // Scanner angle variables
+       	float delta_scanner = 0;
 		float last_scanner_value = 0;
 		float scanner_offsetVal = 0;
 		            		
 		tf::TransformBroadcaster broadcaster1;
-            	tf::TransformBroadcaster broadcaster2;
+        tf::TransformBroadcaster broadcaster2;
         
 		
 };
