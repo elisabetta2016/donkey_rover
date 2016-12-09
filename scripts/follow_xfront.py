@@ -20,6 +20,7 @@ exG = 0   #Global Error in x axes
 eyG = 0   #Global Error in y axes
 error_present = False
 joygain = 1
+external_gain = 1.0
 
 def cnst(eX,eY,Vmax,b,R):
     global kX,kY
@@ -63,9 +64,13 @@ def joycallback(data):
        
 
 def body_error_callback(data):
-   global exG,eyG,error_present
+   global exG,eyG,error_present,external_gain
    exG = data.x
    eyG = data.y
+   if data.z > 0.2:
+   	external_gain = data.z
+   else:
+   	external_gain = 1.0
    error_present = True
 '''
 Sensor Convention  Paper Convention - Controller 
@@ -89,7 +94,7 @@ def get_param(name, default):
 	
 def flp():
    # Variables
-   global kX,kY,Move,exG,eyG,error_present,joygain
+   global kX,kY,Move,exG,eyG,error_present,joygain,external_gain
    Vmax = 0.8
    R = 0.8
    #eX_Offset = 10
@@ -133,8 +138,8 @@ def flp():
       #print("Error")
       #print(eX)
       #print(eY)
-      Ux = math.atan(joygain*CG*eX)*kX*2/3.14159265359
-      Uy = math.atan(joygain*CG*eY)*kY*2/3.14159265359
+      Ux = math.atan(external_gain*joygain*CG*eX)*kX*2/3.14159265359
+      Uy = math.atan(external_gain*joygain*CG*eY)*kY*2/3.14159265359
       U = numpy.matrix(( (Ux),(Uy) )).transpose()
       # Sending the Control Action 
       speed = Vector3()

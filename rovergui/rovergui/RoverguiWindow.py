@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+# -*- Mode: Python; coding: utf-8; indent-tabs-mode: nil; tab-width: 4 -*-
+### BEGIN LICENSE
+# This file is in the public domain
+### END LICENSE
+# ROS Headers
+import rospy
+import math
+from std_msgs.msg import String
+from donkey_rover.msg import Scanner_Command
+# ROS Headers End
+import roslaunch
+
+from subprocess import call
+
+
+from locale import gettext as _
+
+from gi.repository import Gtk # pylint: disable=E0611
+import logging
+logger = logging.getLogger('rovergui')
+
+from rovergui_lib import Window
+from rovergui.AboutRoverguiDialog import AboutRoverguiDialog
+from rovergui.PreferencesRoverguiDialog import PreferencesRoverguiDialog
+
+# Global Variables
+SwipeScanner = False
+package = 'corrector_pkg'
+executable = 'talker.py'
+name = 'scan'
+args = ["Start","3","2","0"]
+node = roslaunch.core.Node(package, executable,name,args)
+launch = roslaunch.scriptapi.ROSLaunch()
+launch.start()
+process = launch.launch(node)
+print process.is_alive()
+
+# See rovergui_lib.Window.py for more details about how this class works
+class RoverguiWindow(Window):
+    __gtype_name__ = "RoverguiWindow"
+    
+    def finish_initializing(self, builder): # pylint: disable=E1002
+        """Set up the main window"""
+        super(RoverguiWindow, self).finish_initializing(builder)
+
+        self.AboutDialog = AboutRoverguiDialog
+        self.PreferencesDialog = PreferencesRoverguiDialog
+
+        # Code for other initialization actions should be added here.
+        self.startsw = self.builder.get_object("startsw")
+        self.stopsw = self.builder.get_object("stopsw")
+
+
+    def on_startsw_clicked(self, widget):
+       global process
+       #process = launch.launch(node)
+       roslaunch.core.Param('Mohsen',2)
+
+    def on_stopsw_clicked(self, widget):
+       global process
+       process.stop()
+
+
+
