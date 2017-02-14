@@ -20,6 +20,7 @@ exG = 0   #Global Error in x axes
 eyG = 0   #Global Error in y axes
 error_present = False
 joygain = 1
+external_gain = 1.0
 
 def cnst(eX,eY,Vmax,b,R):
     global kX,kY
@@ -63,9 +64,13 @@ def joycallback(data):
        
 
 def body_error_callback(data):
-   global exG,eyG,error_present
+   global exG,eyG,error_present,external_gain
    exG = data.x
    eyG = data.y
+   if data.z > 0.2:
+   	external_gain = data.z
+   else:
+   	external_gain = 1.0
    error_present = True
 '''
 Sensor Convention  Paper Convention - Controller 
@@ -89,9 +94,12 @@ def get_param(name, default):
 	
 def flp():
    # Variables
-   global kX,kY,Move,exG,eyG,error_present,joygain
+   global kX,kY,Move,exG,eyG,error_present,joygain,external_gain
    Vmax = 0.8
    R = 0.8
+   speed_present = False
+   speed_exp = 0.0
+   speed_gain = 1
    #eX_Offset = 10
    
    
@@ -103,6 +111,12 @@ def flp():
    b = get_param('~distance_b', 0.4)
    Tracking_precision = get_param('~Tracking_precision', 0.5)
    CG = get_param('~Controller_Gain', 1)
+   speed_exp = get_param('~Speed', 0)
+   if speed_exp == 0:
+   	rospy.logwarn("No speed received")
+   	speed_present = True
+   else:
+   	rospy.loginfo("Speed received")
    # Subscribers
    rospy.Subscriber("Cmd", Cmd, cmd_callback)
    rospy.Subscriber("body_error", Vector3, body_error_callback)
@@ -114,7 +128,15 @@ def flp():
    
    # Pause before executing the command
    #rospy.sleep(10.)
+   b_new = b;
    while not rospy.is_shutdown():
+      try:
+        b_new = rospy.get_param("~distance_b")
+        if b_new != b:
+            b = b_new
+            rospy.logwarn("New value for distance_b = %s received"%str(b))
+      except:
+        pass
       # Move only if it is requested
       if error_present: 
             eX = exG #- b
@@ -133,8 +155,8 @@ def flp():
       #print("Error")
       #print(eX)
       #print(eY)
-      Ux = math.atan(joygain*CG*eX)*kX*2/3.14159265359
-      Uy = math.atan(joygain*CG*eY)*kY*2/3.14159265359
+      Ux = math.atan(external_gain*joygain*CG*eX*speed_gain)*kX*2/3.14159265359
+      Uy = math.atan(external_gain*joygain*CG*eY*speed_gain)*kY*2/3.14159265359
       U = numpy.matrix(( (Ux),(Uy) )).transpose()
       # Sending the Control Action 
       speed = Vector3()
@@ -145,6 +167,10 @@ def flp():
       speed.y = VRL.item(0)
       speed.z = 0 
       speed_pub.publish(speed)
+      if speed_present: 
+      	speed_gain = math.fabs(2*speed_exp/(speed.x+speed.y))
+      	if speed_gain > 1.5:
+      		speed_gain = 1.5
       rate.sleep()
 
 if __name__ == '__main__':

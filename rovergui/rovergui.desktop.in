@@ -1,0 +1,8 @@
+[Desktop Entry]
+_Name=Rovergui
+_Comment=Rovergui application
+Categories=GNOME;Utility;
+Exec=rovergui
+Icon=rovergui
+Terminal=false
+Type=Application
