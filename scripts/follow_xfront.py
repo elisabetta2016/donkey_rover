@@ -128,7 +128,15 @@ def flp():
    
    # Pause before executing the command
    #rospy.sleep(10.)
+   b_new = b;
    while not rospy.is_shutdown():
+      try:
+        b_new = rospy.get_param("~distance_b")
+        if b_new != b:
+            b = b_new
+            rospy.logwarn("New value for distance_b = %s received"%str(b))
+      except:
+        pass
       # Move only if it is requested
       if error_present: 
             eX = exG #- b
