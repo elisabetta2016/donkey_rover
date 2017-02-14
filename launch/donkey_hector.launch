@@ -1,15 +1,14 @@
 <launch>
-<!---->
-  <node pkg="tf" type="static_transform_publisher" name="base_footprint_IMU" args="0 0 0.164 -1.57 0 0 /base_footprint /Imu_link 100" />
-
+<!--
+  <node pkg="tf" type="static_transform_publisher" name="base_footprint_IMU" args="0 0 0 -1.57 0 0 /base_footprint /Imu_link 100" />
+ -->
   <node pkg="tf" type="static_transform_publisher" name="IMU_base_link" args="0 0 0 1.57 0 0 /Imu_link /base_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="base_link_laser" args="0.4932 0 0.160 0 0 0 /base_link /laser 100" />
 
   <node pkg="tf" type="static_transform_publisher" name="base_scanner_b" args="1.85 0 0 0 0 0 /base_scanner  b_link 100" />
  <!-- VI SENSOR -->
-  <node pkg="tf" type="static_transform_publisher" name="b_camera" args="-1.93 -0.255 0.03 0 0.0 0 b_link camera 100" />
-  <node pkg="tf" type="static_transform_publisher" name="camera_cam0" args="0 0 0 -1.57 0 -1.57 camera cam0 100" />
-  <!--<node pkg="tf" type="static_transform_publisher" name="cam0_cam1" args="0 0.11 0 0 0 0 cam0 cam1 100" />-->
+  <node pkg="tf" type="static_transform_publisher" name="b_cam0" args="-1.93 -0.255 0.03 0 0.0 0 b_link cam0 100" />
+  <node pkg="tf" type="static_transform_publisher" name="cam0_cam1" args="0 0.11 0 0 0 0 cam0 cam1 100" />
 
   <!--
   <node pkg="tf" type="static_transform_publisher" name="b-to-camera_link" args="-1.97 0 0 0 0.0 0 b_link camera_link 100" />
@@ -28,19 +27,12 @@
           <!--<param name="autorepeat_rate" value="30" />  -->
   </node>
   <node pkg="donkey_rover" name="rover_odom" type="rover_odom" output="screen" required="true">
-        <param name="send_odom" value="true" />
+        <param name="send_odom" value="false" />
         <param name="odom_3D" value="false" />
         <param name="madgwick" value="false" />
         <param name="x_front" value="true" />
-        <param name="debug" value="false" />
   </node>
-  
-  <node type="imu_filter_node" pkg="imu_filter_madgwick" name="imu_filter_node">
-  
-    <param name="use_mag" value="true" />
-    <param name="use_magnetic_field_msg" value="true" />
-    <param name="publish_tf" value="false" />
-    <param name="gain" value="0.1" />
-  </node>
+  <include file="$(find donkey_rover)/launch/hector.launch" />
+
 </launch>
 

@@ -32,6 +32,7 @@ float scannerCal;
 float VX = 0.0;
 float VY = 0.0;
 bool Low_Battery = false;
+bool debug_ = false;
 
 class DonkeyRoverClass
 {
@@ -97,6 +98,7 @@ class DonkeyRoverClass
 			Time::sleep(2, 0);
 			//int o = system("sudo ~/catkin_ws/src/donkey_rover/scripts/./shutdown.sh");
 			system("sudo poweroff");
+			//system("roslaunch donkey_rover donkey_hector.launch");
 		}
 		
 		void setAttitude(const sherpa_msgs::Attitude::ConstPtr& msg){
@@ -180,20 +182,20 @@ class DonkeyRoverClass
 		
 		if (abs(temp_adjustment_angle - scanner_command_msg.Scanner_Ajustment_Angle)<0.001) new_adjustment_angle=false;
 		else {  new_adjustment_angle=true;
-                ROS_INFO("New Adjustment Angle");}
+                if(debug_) ROS_INFO("New Adjustment Angle");}
 		if (abs(temp_roll_angle - scanner_command_msg.Scanner_Roll_Angle)<0.001) new_roll_angle=false;
 		else {  new_roll_angle = true; 
                 new_roll_angle_2 = true;
-                ROS_INFO("New roll Angle");}
+                if(debug_) ROS_INFO("New roll Angle");}
 		if (abs(temp_home_angle - scanner_command_msg.Scanner_Home_Angle)<0.001) new_home_angle=false;
 		else {  new_home_angle=true;
-                ROS_INFO("New home Angle");}
+                if(debug_) ROS_INFO("New home Angle");}
 		if (abs(temp_scanner_period - scanner_command_msg.Scanner_Period)<0.001) new_scanner_period=false;
 		else {  new_scanner_period=true;
-                ROS_INFO("New Scanner Period");}
+                if(debug_) ROS_INFO("New Scanner Period");}
 		if (temp_scanner_command == scanner_command_msg.Scanner_Command) new_scanner_command=false;
 		else {  new_scanner_command=true;
-                ROS_INFO("New Scanner Command");}
+                if(debug_) ROS_INFO("New Scanner Command");}
 		
 
 		int retCode;
@@ -641,6 +643,7 @@ class DonkeyRoverClass
    			n.param("odom_3D", odom_3D_, false);
    			n.param("madgwick", madgwick_, true);
 		    n.param("x_front",x_front_config,false);
+			n.param("debug",debug_,false);
 			if(odom_3D_ && x_front_config)
 			{
 				ROS_ERROR("odom 3D is not compatible with x_front configuration, it is then set to false");
@@ -650,7 +653,7 @@ class DonkeyRoverClass
    			//Variables
   			float x = 0.0;
   			float y = 0.0;
-  			float z = 0.164;  // New, 3D
+  			float z = 0.0;  // New, 3D
   			float th = 0.0;
   			float v = 0.0;
   			float vx = 0.0;
@@ -676,7 +679,7 @@ class DonkeyRoverClass
             		Quat_attitude.y = 0;
             		Quat_attitude.z = 0;
             		
-  			while(ros::ok()){
+  			while(n_.ok()){
 				// Watch DoG
 				if( Speed_control_sq - Speed_control.header.seq > (unsigned int)rate)
 				{
@@ -684,7 +687,7 @@ class DonkeyRoverClass
 					Speed_control.RLC  = false;
 					if(!Joystick)
 					{
-						ROS_WARN("No new speed msg has beed received in the last second, Watch dog stops the Rover");
+						if(debug_) ROS_WARN("No new speed msg has beed received in the last second, Watch dog stops the Rover");
 						retCode = rover.setSpeed(0.0,0.0);
 					}
 				}
