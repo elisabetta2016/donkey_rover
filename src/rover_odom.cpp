@@ -11,6 +11,7 @@
 #include <sensor_msgs/Joy.h>
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Float32.h>
+#include <std_msgs/String.h>
 // Messages Custom
 #include "donkey_rover/Scanner_Command.h"
 #include "donkey_rover/Rover_Track_Speed.h"
@@ -52,7 +53,7 @@ class DonkeyRoverClass
 			subFromscannercommands_		= n_.subscribe("scanner_commands", 1, &DonkeyRoverClass::SetScanner,this);
 			subFromAttitude_		= n_.subscribe("attitude", 1, &DonkeyRoverClass::setAttitude,this);
 			subFromSpeedcontrol_	= n_.subscribe("speed_control",1,&DonkeyRoverClass::setSpeedControl,this);
-
+      subFromHazardmsg_      = n_.subscribe("Hazard",1,&DonkeyRoverClass::hazard_cb,this);
 			// publishers
 			odom_pub 	   	  = n_.advertise<nav_msgs::Odometry>("odom", 100);
 			pose_pub		  = n_.advertise<geometry_msgs::PoseWithCovarianceStamped>("donkey_pose", 100);
@@ -73,10 +74,25 @@ class DonkeyRoverClass
 			Speed_control.CMD = false;
 			Speed_control.JOY = true;
 			Speed_control.RLC = false;
-			
+      Track_eneabled = true;
 
 		}
 
+    void hazard_cb(const std_msgs::String::ConstPtr msg)
+    {
+         if (msg->data.compare("Red")==0)
+         {
+           ROS_ERROR("Donkey_Rover: Hazardous distance to obstacle, Stoping the Rover");
+           ROS_ERROR_COND(rover.disableTracks()!=0,"Failed to Disable Track");
+           Track_eneabled = false;
+         }
+         if(!Track_eneabled)
+           if(msg->data.compare("Red")!= 0)
+           {
+             Track_eneabled = true;
+             ROS_ERROR_COND(rover.enableTracks()!=0,"Failed to ReEnabe Tracks");
+           }
+    }
 		void setSpeedControl(const donkey_rover::Speed_control::ConstPtr& msg)
 		{
 			Speed_control = *msg;
@@ -856,7 +872,7 @@ class DonkeyRoverClass
 		ros::Subscriber subFromscannerdata_;
 		ros::Subscriber subFromscannercommands_;
 		ros::Subscriber subFromSpeedcontrol_;
-
+    ros::Subscriber subFromHazardmsg_;
 		// Publishers
 		ros::Publisher odom_pub;
 		ros::Publisher pose_pub;
@@ -905,7 +921,7 @@ class DonkeyRoverClass
         float temp_home_angle = -100;
         float temp_scanner_period = -100;
        	string temp_scanner_command = "Ciao";
-
+        bool Track_eneabled = true;
         // Scanner angle variables
        	float delta_scanner = 0;
 		float last_scanner_value = 0;
