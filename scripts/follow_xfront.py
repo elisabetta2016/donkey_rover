@@ -30,13 +30,13 @@ def cnst(eX,eY,Vmax,b,R):
         eY = -0.0001
     ## Calculating the constraints
     if eX >= 0 and eY >= 0:
-       kY = Vmax / (eX/eY+2*b/R)
+       kY = Vmax / (eX/eY+2*abs(b)/R)
     if eX >= 0 and eY <= 0:
-       kY = Vmax/(eX/eY-2*b/R)
+       kY = Vmax/(eX/eY-2*abs(b)/R)
     if eX <= 0 and eY <= 0:
-       kY = -Vmax/(eX/eY+2*b/R)
+       kY = -Vmax/(eX/eY+2*abs(b)/R)
     if eX <= 0 and eY >= 0:
-       kY = -Vmax/(eX/eY-2*b/R)
+       kY = -Vmax/(eX/eY-2*abs(b)/R)
     kX = eX*kY/eY
     ## Absulute values
     kX = math.fabs(kX)
@@ -129,12 +129,28 @@ def flp():
    # Pause before executing the command
    #rospy.sleep(10.)
    b_new = b;
+   CG_new = CG;
+   Tracking_precision_new = Tracking_precision;
    while not rospy.is_shutdown():
       try:
         b_new = rospy.get_param("~distance_b")
         if b_new != b:
             b = b_new
             rospy.logwarn("New value for distance_b = %s received"%str(b))
+      except:
+        pass
+      try:
+        CG_new = rospy.get_param("~Controller_Gain")
+        if CG_new != CG:
+            CG = CG_new
+            rospy.logwarn("New value for Controller Gain = %s received"%str(CG))
+      except:
+        pass
+      try:
+        Tracking_precision_new = rospy.get_param("~Tracking_precision")
+        if Tracking_precision_new != Tracking_precision:
+             Tracking_precision = abs(Tracking_precision_new)
+             rospy.logwarn("New value for Tracking_precision = %s received"%str(Tracking_precision))
       except:
         pass
       # Move only if it is requested
@@ -145,9 +161,11 @@ def flp():
             #print("ciao")
             eX = 0
             eY = 0
-      if math.fabs(eX) < Tracking_precision:
+      if (math.fabs(eX) < Tracking_precision and error_present == True and eX != 0):
+          rospy.loginfo("controller: x achieved ex: %s"%str(eX))
           eX=0
-      if math.fabs(eY) < Tracking_precision:
+      if (math.fabs(eY) < Tracking_precision and error_present == True and eY != 0):
+          rospy.loginfo("controller: y achieved ey: %s"%str(eY))
           eY=0
       # Calculating the saturation limits
       cnst(eX,eY,Vmax,b,R);
