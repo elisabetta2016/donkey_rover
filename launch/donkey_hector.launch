@@ -5,7 +5,7 @@
   <node pkg="tf" type="static_transform_publisher" name="fake_odom_link" args="0 0 0 0 0 0 /odom /map 100" />
   <node pkg="tf" type="static_transform_publisher" name="IMU_base_link" args="0 0 0 1.57 0 0 /Imu_link /base_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="base_link_base_footprint" args="0 0 -0.164 0 0 0 /base_link /base_footprint 100" />
-  <node pkg="tf" type="static_transform_publisher" name="base_footprint_laser" args="0.4932 0 0.324 0 0 0 /base_link /laser 100" />
+  <node pkg="tf" type="static_transform_publisher" name="base_footprint_laser" args="0.4932 0 0.324 0 0 0 /base_footprint /laser 100" />
 
   <node pkg="tf" type="static_transform_publisher" name="base_scanner_b" args="1.85 0 0 0 0 0 /base_scanner  b_link 100" />
  <!-- VI SENSOR 
