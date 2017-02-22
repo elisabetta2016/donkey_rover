@@ -1,7 +1,7 @@
 <launch>
 <!--
   <node pkg="tf" type="static_transform_publisher" name="base_footprint_IMU" args="0 0 0 -1.57 0 0 /base_footprint /Imu_link 100" />
- --> 
+ -->
   <node pkg="tf" type="static_transform_publisher" name="fake_odom_link" args="0 0 0 0 0 0 /odom /map 100" />
   <node pkg="tf" type="static_transform_publisher" name="IMU_base_link" args="0 0 0 1.57 0 0 /Imu_link /base_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="base_link_laser" args="0.4932 0 0.160 0 0 0 /base_link /laser 100" />
@@ -10,7 +10,7 @@
  <!-- VI SENSOR 
   <node pkg="tf" type="static_transform_publisher" name="b_cam0" args="-1.93 -0.255 0.03 0 0.0 0 b_link cam0 100" />
   <node pkg="tf" type="static_transform_publisher" name="cam0_cam1" args="0 0.11 0 0 0 0 cam0 cam1 100" />
-
+  -->
   <!--
   <node pkg="tf" type="static_transform_publisher" name="b-to-camera_link" args="-1.97 0 0 0 0.0 0 b_link camera_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="camera_link-to-kinect" args="0 0 0 0 0 0 camera_link openni_depth_frame  100" />
@@ -33,7 +33,13 @@
         <param name="madgwick" value="false" />
         <param name="x_front" value="true" />
   </node>
+
+    <node pkg="donkey_rover" name="controler" type="follow_xfront.py" output="screen" required="true">
+    <param name="Tracking_precision" value="0.01" />
+    <param name="Speed" value="0.1" />
+
+    </node>  
+  
   <include file="$(find donkey_rover)/launch/hector.launch" />
 
 </launch>
-
