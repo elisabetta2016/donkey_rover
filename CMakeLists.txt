@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(donkey_rover)
 
-## Find catkin macros and libraries
+## Find catkin macros and libraries 
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
@@ -29,6 +29,7 @@ add_message_files(
 
 generate_messages(
    DEPENDENCIES
+   donkey_rover
    std_msgs
 )
  
@@ -107,16 +108,16 @@ target_link_libraries(rover_odom Rover
 #  ${GSTREAMER_INCLUDE_DIRS}
 # )
 
-install(TARGETS Rover
-        ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-        LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-        RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
+#install(TARGETS Rover
+#        ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#        LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#        RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
 
-install(DIRECTORY include/${PROJECT_NAME}/
-   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-   FILES_MATCHING PATTERN "*.h"
-   PATTERN ".svn" EXCLUDE
- )
+#install(DIRECTORY include/${PROJECT_NAME}/
+#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+#   FILES_MATCHING PATTERN "*.h"
+#   PATTERN ".svn" EXCLUDE
+# )
 
 
 ##add_subdirectory(include)
