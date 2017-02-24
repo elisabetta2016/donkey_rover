@@ -49,6 +49,7 @@
       <param name="pub_debug_output" value="true"/>
     -->
     <param name="tf_map_scanmatch_transform_frame_name" value="$(arg tf_map_scanmatch_transform_frame_name)" />
+    <remap from="map" to="map_raw" />
   </node>
     
     <!-- HECTOR IMU to TF -->
