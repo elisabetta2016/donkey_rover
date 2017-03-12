@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="tf" type="static_transform_publisher" name="map_orbworld" args="0 0 0.651 -1.57 0 -1.57 /map /ORB_SLAM/World 100" />
+  <node pkg="tf" type="static_transform_publisher" name="baselink_cam1" args="-0.265 -0.055 -0.815 0 0 0 /cam1 /base_footprint 100" />
+  <!-- <node pkg="tf" type="static_transform_publisher" name="cam1_cam0" args="0 -0.11 0 0 0 0 /cam1 /cam0 100" /> -->
+  <node pkg="tf" type="static_transform_publisher" name="cam1_orbsalmcamera" args="0 0 0 0 -1.57 1.57 /ORB_SLAM/Camera /cam1 100" />
+</launch>

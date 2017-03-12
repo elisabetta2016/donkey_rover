@@ -2,7 +2,7 @@
   <node pkg="tf" type="static_transform_publisher" name="base_footprint_IMU" args="0 0 0.164 -1.57 0 0 /base_footprint /Imu_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="IMU_base_link" args="0 0 0 1.57 0 0 /Imu_link /base_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="base_link_laser" args="0.4932 0 0.160 0 0 0 /base_link /laser 100" />
-
+  <include file="$(find donkey_rover)/launch/visensor_dims.launch" />
 
   <arg name="host" default="192.168.0.1" />
   <master auto="start"/>
@@ -10,14 +10,12 @@
   <param name="host" value="$(arg host)" />
   <param name="frame_id" value="base_laser" />
   </node>
-  <!--
-  <include file="$(find position_estimator)/launch/mms_rover.launch" />
-  -->
+
   <node pkg="joy" name="joy_node" type="joy_node" output="screen">
           <!--<param name="autorepeat_rate" value="30" />  -->
   </node>
   <node pkg="donkey_rover" name="rover_odom" type="rover_odom" output="screen" required="true">
-        <param name="send_odom" value="true" />
+        <param name="send_odom" value="false" />
         <param name="odom_3D" value="false" />
         <param name="madgwick" value="false" />
         <param name="x_front" value="true" />
