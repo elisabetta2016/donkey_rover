@@ -27,6 +27,7 @@
   <node pkg="joy" name="joy_node" type="joy_node" output="screen">
           <!--<param name="autorepeat_rate" value="30" />  -->
   </node>
+  <node pkg="donkey_rover" name="DonkeyState" type="rover_state" output="screen" required="true"/>
   <node pkg="donkey_rover" name="rover_odom" type="rover_odom" output="screen" required="true">
         <param name="send_odom" value="false" />
         <param name="odom_3D" value="false" />

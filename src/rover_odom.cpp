@@ -21,10 +21,7 @@
 #include "donkey_rover/Speed_control.h"
 #include "sherpa_msgs/Attitude.h"
 
-
 #include<iostream>
-
-
 
 Rover rover(false);
 EScannerState state;
@@ -134,7 +131,7 @@ class DonkeyRoverClass
   			float VR = speed.x;
 			if(!Speed_control.RLC)
 			{
-				ROS_ERROR("RLC speed will not be executed due to false vale of speed_control/RLC");
+        ROS_ERROR_THROTTLE(4,"RLC speed will not be executed due to false vale of speed_control/RLC");
 			}
 
   			if(!Joystick && Speed_control.RLC){

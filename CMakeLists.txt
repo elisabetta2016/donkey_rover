@@ -65,6 +65,7 @@ add_library(Rover LibRover/BogieScanner.cc LibRover/CANopenHelper.cc LibRover/CA
 ## Declare a C++ executable
 ##add_executable(rovstate src/rovstate.cpp)
 add_executable(rover_odom src/rover_odom.cpp)
+add_executable(rover_state src/rover_state.cpp)
 #add_executable(rover_drive src/rover_drive.cpp)
 #add_executable(rover_joy src/rover_joy.cpp)
 #add_executable(rover_scannerangle src/rover_scannerangle.cpp) 
@@ -89,6 +90,9 @@ target_link_libraries(rover_odom Rover
   ${catkin_LIBRARIES}
   ${Boost_INCLUDE_DIRS}
   ${GSTREAMER_INCLUDE_DIRS}
+ )
+target_link_libraries(rover_state
+  ${catkin_LIBRARIES}
  )
 #target_link_libraries(rover_drive Rover
 #  ${catkin_LIBRARIES}
