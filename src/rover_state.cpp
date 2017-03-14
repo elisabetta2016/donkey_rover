@@ -20,7 +20,7 @@ class DonkeyState
        subFromScannerMsg = n_.subscribe("RoverScannerInfo",1,&DonkeyState::scanInfo_cb,this);
 
        ros::param::set("rover_state/scanner_state","horizontal");
-       ros::param::set("rover_state/scanner_config/Period",2.0);
+       ros::param::set("rover_state/scanner_config/Period",3.0);
        ros::param::set("rover_state/scanner_config/Roll_angle",M_PI/2);
        ros::param::set("rover_state/scanner_config/Home_angle",0.0);
 
@@ -40,10 +40,12 @@ class DonkeyState
 
     void scanInfo_cb(const donkey_rover::Rover_Scanner::ConstPtr& msg)
     {
-      if(msg->Scanner_angle < 0.00001 && msg->Scanner_angle > -0.00001)
+      if(msg->Scanner_angle < 0.001 && msg->Scanner_angle > -0.001)
         ros::param::set("rover_state/scanner_state","horizontal");
-      else
+      else if(msg->Scanner_State.compare("Rolling") == 0)
        ros::param::set("rover_state/scanner_state","rolling");
+      else
+       ros::param::set("rover_state/scanner_state","unknownStill");
     }
 
     void Scanner_control()

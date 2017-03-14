@@ -50,7 +50,7 @@ class DonkeyRoverClass
 			subFromscannercommands_		= n_.subscribe("scanner_commands", 1, &DonkeyRoverClass::SetScanner,this);
 			subFromAttitude_		= n_.subscribe("attitude", 1, &DonkeyRoverClass::setAttitude,this);
 			subFromSpeedcontrol_	= n_.subscribe("speed_control",1,&DonkeyRoverClass::setSpeedControl,this);
-      subFromHazardmsg_      = n_.subscribe("Hazard",1,&DonkeyRoverClass::hazard_cb,this);
+//      subFromHazardmsg_      = n_.subscribe("Hazard",1,&DonkeyRoverClass::hazard_cb,this);
 			// publishers
 			odom_pub 	   	  = n_.advertise<nav_msgs::Odometry>("odom", 100);
 			pose_pub		  = n_.advertise<geometry_msgs::PoseWithCovarianceStamped>("donkey_pose", 100);
@@ -75,21 +75,21 @@ class DonkeyRoverClass
 
 		}
 
-    void hazard_cb(const std_msgs::String::ConstPtr msg)
-    {
-         if (msg->data.compare("Red")==0)
-         {
-           ROS_ERROR("Donkey_Rover: Hazardous distance to obstacle, Stoping the Rover");
-           ROS_ERROR_COND(rover.disableTracks()!=0,"Failed to Disable Track");
-           Track_eneabled = false;
-         }
-         if(!Track_eneabled)
-           if(msg->data.compare("Red")!= 0)
-           {
-             Track_eneabled = true;
-             ROS_ERROR_COND(rover.enableTracks()!=0,"Failed to ReEnabe Tracks");
-           }
-    }
+//    void hazard_cb(const std_msgs::String::ConstPtr msg)
+//    {
+//         if (msg->data.compare("Red")==0)
+//         {
+//           ROS_ERROR("Donkey_Rover: Hazardous distance to obstacle, Stoping the Rover");
+//           ROS_ERROR_COND(rover.disableTracks()!=0,"Failed to Disable Track");
+//           Track_eneabled = false;
+//         }
+//         if(!Track_eneabled)
+//           if(msg->data.compare("Red")!= 0)
+//           {
+//             Track_eneabled = true;
+//             ROS_ERROR_COND(rover.enableTracks()!=0,"Failed to ReEnabe Tracks");
+//           }
+//    }
 		void setSpeedControl(const donkey_rover::Speed_control::ConstPtr& msg)
 		{
 			Speed_control = *msg;
