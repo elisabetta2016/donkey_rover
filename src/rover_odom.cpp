@@ -709,6 +709,7 @@ class DonkeyRoverClass
 				if (first_cycle && scannerRaw > 0 && count/rate > 2) {
 					scanner_hor_corrector = -scannerRaw - scanner_offsetVal;
 					ROS_WARN("scanner hor corrector is %f", scanner_hor_corrector);
+          ros::param::set("rover_state/scanner_config/hor_val", (double) scanner_hor_corrector);
 					first_cycle = false;
 				}
 				
