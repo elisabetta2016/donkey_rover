@@ -41,7 +41,7 @@
     
     <param name="scan_subscriber_queue_size" value="$(arg scan_subscriber_queue_size)"/>
     <param name="scan_topic" value="$(arg scan_topic)"/>
-    
+    <remap from="map" to="map_raw"/>
     <!-- Debug parameters -->
     <!--
       <param name="output_timing" value="false"/>

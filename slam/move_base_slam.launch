@@ -1,0 +1,17 @@
+<launch>
+
+  <!-- Run the map server -->
+  <!--node name="map_server" pkg="map_server" type="map_server" args="~/map.yaml"/-->
+
+
+
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <remap from ="cmd_vel" to="cmd_crap"/>
+    <param name="controller_frequency" value="5.0" />
+    <rosparam file="$(find rover_simulator)/launch/slam/costmap_common_params_slam.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find rover_simulator)/launch/slam/costmap_common_params_slam.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find rover_simulator)/launch/slam/local_costmap_params_slam.yaml" command="load" />
+    <rosparam file="$(find rover_simulator)/launch/slam/global_costmap_params_slam.yaml" command="load" />
+    <rosparam file="$(find rover_simulator)/launch/slam/base_local_planner_params_slam.yaml" command="load" />
+  </node>
+</launch> 
