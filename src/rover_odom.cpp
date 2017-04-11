@@ -213,54 +213,7 @@ class DonkeyRoverClass
 
 		int retCode;
 		if (!first_cycle){
-			//Commands
-			temp_scanner_command = scanner_command_msg.Scanner_Command;
- 			 if (scanner_command_msg.Scanner_Command =="GoHome" && new_scanner_command ){
-                      
-    				  while (state != ESSIdle)
-     			 	  {
-       					cout << '.' << flush;
-       					Time::sleep(1, 0);
-       					retCode = rover.getScannerState(state);
-     				  }
-                      retCode = rover.sendScannerCommand(ESCStop);
-                        Time::sleep(1, 0);
-     			 	  retCode = rover.sendScannerCommand(ESCGoHome);
-      			 	  if (retCode != 0)
-      		 	  	  {
-        		  	       ROS_ERROR("Scanner GoHome failed");
 
-      				  }
-      				  scanner_horizontal = true;
-  			 } else if(scanner_command_msg.Scanner_Command == "Start" && new_scanner_command)
-  			 {
-     			 	while (state != ESSIdle)
-      				{
-       					cout << '.' << flush;
-       					Time::sleep(1, 0);
-       					retCode = rover.getScannerState(state);
-      			 	}
-      			 	scannerRaw_init = scannerRaw;
-      			 	retCode = rover.sendScannerCommand(ESCStart);
-      			 	if (retCode != 0)
-      			 	{
-       		         		ROS_ERROR("Scanner Starting failed");
-
-     				 }
-  			} else if(scanner_command_msg.Scanner_Command == "Stop" && new_scanner_command)
-  			{
-      				retCode = rover.sendScannerCommand(ESCStop);
-      				if (retCode != 0)
-      				{
-       					ROS_ERROR("Scanner Stopping failed");
-
-      				}
-  			} else if (scanner_command_msg.Scanner_Command == "DoHoming" && new_scanner_command)
-  			{
-     				retCode = rover.sendScannerCommand(ESCDoHoming);
-
-  			}	  
-  			//else ROS_ERROR("Scanner Command is not valid"); 
   			
 			//Scanner Adjustment Angle
 			if (scanner_command_msg.Scanner_Ajustment_Angle != -100 && new_adjustment_angle){
@@ -319,6 +272,55 @@ class DonkeyRoverClass
       			 	  if (retCode != 0) ROS_ERROR("Set Scanner Home Angle failed");
 				  else ROS_INFO("Scanner Period is successfully set to %f",temp_scanner_period);	
 			}
+      //Commands
+      temp_scanner_command = scanner_command_msg.Scanner_Command;
+       if (scanner_command_msg.Scanner_Command =="GoHome" && new_scanner_command ){
+
+              while (state != ESSIdle)
+              {
+                cout << '.' << flush;
+                Time::sleep(1, 0);
+                retCode = rover.getScannerState(state);
+              }
+                      retCode = rover.sendScannerCommand(ESCStop);
+                        Time::sleep(1, 0);
+              retCode = rover.sendScannerCommand(ESCGoHome);
+                if (retCode != 0)
+                  {
+                       ROS_ERROR("Scanner GoHome failed");
+
+                }
+                scanner_horizontal = true;
+         } else if(scanner_command_msg.Scanner_Command == "Start" && new_scanner_command)
+         {
+         ros::Duration(0.1).sleep();
+            while (state != ESSIdle)
+              {
+                cout << '.' << flush;
+                Time::sleep(1, 0);
+                retCode = rover.getScannerState(state);
+              }
+              scannerRaw_init = scannerRaw;
+              retCode = rover.sendScannerCommand(ESCStart);
+              if (retCode != 0)
+              {
+                      ROS_ERROR("Scanner Starting failed");
+
+             }
+        } else if(scanner_command_msg.Scanner_Command == "Stop" && new_scanner_command)
+        {
+              retCode = rover.sendScannerCommand(ESCStop);
+              if (retCode != 0)
+              {
+                ROS_ERROR("Scanner Stopping failed");
+
+              }
+        } else if (scanner_command_msg.Scanner_Command == "DoHoming" && new_scanner_command)
+        {
+            retCode = rover.sendScannerCommand(ESCDoHoming);
+
+        }
+        //else ROS_ERROR("Scanner Command is not valid");
 		}
 		}
 
